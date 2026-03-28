@@ -3,7 +3,6 @@
 This Helm chart deploys and manages a highly available PostgreSQL cluster using the Percona Operator for PostgreSQL v2. It includes built-in support for high availability (Patroni), automated backups (pgBackRest) to local PVCs and remote S3 compatible storage, and monitoring (PMM).
 
 ## Prerequisites
-* **Percona Operator for PostgreSQL v2** installed in your cluster.
 * **StorageClasses** available in the specific availability zones (`az-a`, `az-b`, `az-c`).
 * **Image Pull Secret:** A secret named `quay-pull-secret` must exist in the namespace to pull images from the private registry (`registry.med.one`).
 
