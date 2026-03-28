@@ -97,8 +97,6 @@ To enable PMM, simply provide your PMM server token. Leaving the token blank wil
 
 ```yaml
 pmm_server_token: "YOUR_TOKEN_HERE"
-pmm:
-  serverHost: "monitoring-service.med.one"
 ```
 
 ---
