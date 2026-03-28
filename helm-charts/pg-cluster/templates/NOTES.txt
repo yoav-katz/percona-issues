@@ -9,5 +9,8 @@ To get a PostgreSQL prompt inside your new cluster you can run:
 
 And then connect to a cluster with a temporary Pod:
 
-  $ kubectl run -i --rm --tty percona-client --image=docker.io/percona/percona-distribution-postgresql:17.7-2 --restart=Never \
-  -- psql $URI
+  $ kubectl run -i --rm --tty percona-client \
+  --image=registry.med.one/dbaas-postgres/percona/percona-distribution-postgresql:17.7-2 \
+  --restart=Never \
+  --overrides='{"spec": {"imagePullSecrets": [{"name": "quay-pull-secret"}]}}' \
+  -- psql $URI 
