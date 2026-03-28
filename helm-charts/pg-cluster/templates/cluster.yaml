@@ -114,6 +114,7 @@ spec:
 
       postgresql:
         pg_hba:
+          - "hostssl all all all md5"
           - "hostssl all all all cert"
           {{- if $pg.pg_hba }}
 {{ toYaml $pg.pg_hba | nindent 10 }}
