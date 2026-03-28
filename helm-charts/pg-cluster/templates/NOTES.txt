@@ -4,7 +4,7 @@ To get a PostgreSQL prompt inside your new cluster you can run:
   {{ $users := .Values.users }} {{ $firstUser := first $users }} {{ $userName := $firstUser.name }}
   URI=$(kubectl -n {{ .Release.Namespace }} get secrets {{ $clusterName }}-pguser-{{ $userName }} -o jsonpath="{.data.uri}" | base64 --decode)
 {{- else }}
-  URI=$(kubectl -n {{ .Release.Namespace }} get secrets {{ $clusterName }}-pguser-{{ $clusterName }} -o jsonpath="{.data.pgbouncer-uri}" | base64 --decode)
+  URI=$(kubectl -n {{ .Release.Namespace }} get secrets {{ $clusterName }}-pguser-{{ $clusterName }} -o jsonpath="{.data.uri}" | base64 --decode)
 {{- end }}
 
 And then connect to a cluster with a temporary Pod:

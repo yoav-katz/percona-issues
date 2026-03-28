@@ -50,13 +50,6 @@ postgresql:
     shared_buffers: "128MB"
   pg_hba:
     - "host all all 10.0.0.0/8 md5"
-
-patroni:
-  syncPeriodSeconds: 10
-  leaderLeaseDurationSeconds: 30
-  # switchover:
-  #   enabled: true
-  #   targetInstance: "instance-1"
 ```
 
 ### 4. Users & Databases

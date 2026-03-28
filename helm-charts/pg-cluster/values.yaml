@@ -50,6 +50,7 @@ dbResources:
 #postgresql:
   # Append extra parameters to postgresql.conf
 #  parameters:
+    max_connections: 200
 #    shared_buffers: "128MB"
 #    statement_timeout: "60000"
     
