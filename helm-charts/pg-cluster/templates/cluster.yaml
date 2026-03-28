@@ -1,0 +1,212 @@
+{{- $v := .Values }}
+{{- $pg := $v.postgresql | default dict }}
+{{- $patroni := $v.patroni | default dict }}
+{{- $backups := $v.backups | default dict }}
+{{- $s3 := $backups.s3 | default dict }}
+{{- $local := $backups.local | default dict }}
+
+{{- $targetZone := include "pg-cluster.randomZone" . -}}
+
+apiVersion: pgv2.percona.com/v2
+kind: PerconaPGCluster
+metadata:
+  labels:
+{{ include "pg-cluster.labels" . | indent 4 }}
+  {{- if $v.finalizers }}
+  finalizers:
+{{ $v.finalizers | toYaml | indent 4 }}
+  {{- end }}
+  name: {{ include "pg-cluster.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+
+spec:
+  # TODO tls, standby, extensions, wal container and job (backup restore) resources, backup retention 
+  crVersion: 2.8.2
+  image: registry.med.one/dbaas-postgres/percona/percona-distribution-postgresql:{{ $v.postgresVersion }}
+  imagePullPolicy: {{ $v.imagePullPolicy | default "IfNotPresent" }}
+  imagePullSecrets: 
+    - name: "quay-pull-secret"
+
+  port: 5432
+  postgresVersion: {{ splitList "." (toString $v.postgresVersion) | first }}
+  pause: {{ $v.pause | default false }}
+  unmanaged: {{ $v.unmanaged | default false }}
+  tlsOnly: false
+  openshift: true
+
+  {{- if hasKey $v "autoCreateUserSchema" }}
+  autoCreateUserSchema: {{ $v.autoCreateUserSchema }}
+  {{- end }}
+
+  {{- if $v.users }}
+  users:
+  {{- range $user := $v.users }}
+    - name: {{ $user.name }}
+      {{- if $user.databases }}
+      databases:
+      {{- range $db := $user.databases }}
+        - {{ $db }}
+      {{- end }}
+      {{- end }}
+      {{- if hasKey $user "grantPublicSchemaAccess" }}
+      grantPublicSchemaAccess: {{ $user.grantPublicSchemaAccess }}
+      {{- end }}
+      {{- if $user.options }}
+      options: {{ $user.options }}
+      {{- end }}
+      {{- if $user.password }}
+      password:
+        type: {{ $user.password.type }}
+      {{- end }}
+      {{- if $user.secretName }}
+      secretName: {{ $user.secretName }}
+      {{- end }}
+  {{- end }}
+  {{- end }}
+
+  expose:
+    type: LoadBalancer
+  exposeReplicas:
+    type: LoadBalancer
+
+  instances:
+{{- $zones := list "az-a" "az-b" "az-c" -}}
+{{- range $i, $_ := until (int $v.replicaCount) }}
+{{- $currentZone := "" -}}
+{{- if eq (int $v.replicaCount) 1 }}
+  {{- $currentZone = $targetZone }}
+{{- else }}
+  {{- $currentZone = index $zones (mod $i 3) }}
+{{- end }}
+    - name: instance-{{ add $i 1 }}
+      replicas: 1
+      env:
+        - name: TZ
+          value: "Asia/Jerusalem"
+      resources:
+{{ toYaml $v.dbResources | nindent 8 }}
+      dataVolumeClaimSpec:
+        storageClassName: {{ $currentZone }}
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: {{ $v.dbStorage }}
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: topology.kubernetes.io/zone
+                    operator: In
+                    values: [{{ $currentZone | quote }}]
+{{- end }}
+
+  patroni:
+    syncPeriodSeconds: {{ $patroni.syncPeriodSeconds | default 10 }}
+    leaderLeaseDurationSeconds: {{ $patroni.leaderLeaseDurationSeconds | default 30 }}
+
+    dynamicConfiguration:
+      synchronous_mode: {{ eq (int $v.replicaCount) 1 | ternary false true }}
+      synchronous_mode_strict: {{ eq (int $v.replicaCount) 1 | ternary false true }}
+      {{- if gt (int $v.replicaCount) 1 }}
+      synchronous_node_count: 1
+      {{- end }}
+
+      postgresql:
+        pg_hba:
+          - "hostssl all all all cert"
+          {{- if $pg.pg_hba }}
+{{ toYaml $pg.pg_hba | nindent 10 }}
+          {{- end }}
+
+        parameters:
+          synchronous_commit: {{ eq (int $v.replicaCount) 1 | ternary "local" "on" | quote }}
+          max_connections: {{ $pg.max_connections | default 100 }}
+          work_mem: {{ $pg.work_mem | default "4MB" | quote }}
+          wal_level: {{ $pg.wal_level | default "replica" | quote }}
+          {{- if $pg.parameters }}
+{{ toYaml $pg.parameters | nindent 10 }}
+          {{- end }}
+
+    {{- if $patroni.switchover }}
+    switchover:
+      enabled: {{ $patroni.switchover.enabled }}
+      {{- if $patroni.switchover.targetInstance }}
+      targetInstance: {{ $patroni.switchover.targetInstance }}
+      {{- end }}
+    {{- end }}
+
+  backups:
+    enabled: {{ $backups.enabled | default false }}
+    {{- if $backups.enabled }}
+
+    trackLatestRestorableTime: false
+
+    pgbackrest:
+      image: registry.med.one/dbaas-postgres/percona/percona-pgbackrest:2.57.0-1
+
+      {{- if $s3.enabled }}
+      configuration:
+        - secret:
+            name: {{ printf "%s-pgbackrest-secret" (include "pg-cluster.fullname" .) }}
+      {{- end }}
+
+      env:
+        - name: TZ
+          value: "Asia/Jerusalem"
+
+      global:
+        repo1-retention-full: "1"
+        {{- if $s3.enabled }}
+        repo2-retention-full: "1"
+        repo2-retention-diff: "6"
+        repo2-s3-uri-style: path
+        repo2-s3-verify-tls: 'n'
+        {{- end }}
+
+      repoHost:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+                - matchExpressions:
+                    - key: topology.kubernetes.io/zone
+                      operator: In
+                      values: [{{ $targetZone | quote }}]
+
+      repos:
+        - name: repo1
+          schedules:
+{{ toYaml ($local.schedules | default dict) | nindent 12 }}
+          volume:
+            volumeClaimSpec:
+              storageClassName: {{ $targetZone }}
+              accessModes: [ReadWriteOnce]
+              resources:
+                requests:
+                  storage: {{ $v.dbStorage }}
+
+        {{- if $s3.enabled }}
+        - name: repo2
+          schedules:
+{{ toYaml ($s3.schedules | default dict) | nindent 12 }}
+          s3:
+            bucket: {{ (include "pg-cluster.fullname" .) | quote }}
+            endpoint: {{ $s3.endpoint | quote }}
+            region: {{ $s3.region | quote }}
+        {{- end }}
+
+    {{- end }}
+
+  pmm:
+    enabled: {{ empty $v.pmm_server_token | ternary false true }}
+    image: registry.med.one/dbaas-postgres/percona/pmm-client:3.5.0
+    imagePullPolicy: IfNotPresent
+    secret: {{ printf "%s-pmm-secret" (include "pg-cluster.fullname" .) }}
+    serverHost: "monitoring-service"
+
+  proxy:
+    pgBouncer:
+      exposeSuperusers: false
+      replicas: 0
+      image: registry.med.one/dbaas-postgres/percona/percona-pgbouncer:1.25.0-1

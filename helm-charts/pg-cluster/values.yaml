@@ -1,0 +1,123 @@
+# ==========================================
+# PERCONA POSTGRESQL CLUSTER CONFIGURATION
+# ==========================================
+
+finalizers:
+# Set this if you want that operator deletes the PVCs on cluster deletion
+  - percona.com/delete-pvc
+# Set this if you want that operator deletes the ssl objects on cluster deletion
+  - percona.com/delete-ssl
+# Set this if you want that operator deletes the backups on cluster deletion
+  - percona.com/delete-backups
+
+
+# -- The exact image tag to deploy. The chart automatically parses the major version from this string.
+postgresVersion: "16.11-2"
+forceZone: "az-b"
+# -- Set to true to pause the operator from reconciling this cluster (useful during manual maintenance)
+pause: false
+
+# -- Set to true to stop the operator from managing the cluster completely
+unmanaged: false
+
+
+# ==========================================
+# TOPOLOGY & RESOURCES
+# ==========================================
+
+# -- Number of database nodes. 
+# 1 = Single-node (disables synchronous commit & HA logic)
+# 3 = High Availability (distributes across az-a, az-b, az-c and enables strict sync)
+replicaCount: 3
+
+# -- Storage size for the primary data volume (PVC) per node
+dbStorage: "5Gi"
+
+# -- Compute resources assigned to each database node
+dbResources:
+  requests:
+    cpu: "1"
+    memory: "2Gi"
+  limits:
+    cpu: "2"
+    memory: "4Gi"
+
+
+# ==========================================
+# POSTGRESQL ENGINE CONFIGURATION
+# ==========================================
+
+#postgresql:
+  # Append extra parameters to postgresql.conf
+#  parameters:
+#    shared_buffers: "128MB"
+#    statement_timeout: "60000"
+    
+  # Append extra rules to pg_hba.conf (hostssl all all all cert is injected automatically)
+#  pg_hba:
+#    - "host all all 10.0.0.0/8 md5"
+#    - "host replication standby 0.0.0.0/0 scram-sha-256"
+
+
+# ==========================================
+# PATRONI (HIGH AVAILABILITY)
+# ==========================================
+#patroni:
+  # syncPeriodSeconds: 10
+  # leaderLeaseDurationSeconds: 30
+  
+  # To trigger a controlled switchover to a specific node, enable this
+#  switchover:
+#    enabled: false
+    # targetInstance: "instance-1"
+
+
+# ==========================================
+# USERS & DATABASES
+# ==========================================
+autoCreateUserSchema: true
+
+#users:
+#  - name: "app_user"
+#    databases: 
+#      - "app_db"
+#    password:
+      # Automatically generates a Kubernetes Secret with the password
+#      type: "AlphaNumeric"
+    # grantPublicSchemaAccess: false
+    # options: "SUPERUSER"
+
+
+# ==========================================
+# BACKUPS (pgBackRest)
+# ==========================================
+backups:
+  enabled: true
+  
+  # Local PVC Backup (Always runs if backups are enabled)
+  local:
+    schedules:
+      full: "0 10 * * *"
+      
+  # Remote S3 Backup (e.g., StorageGRID or AWS S3)
+  s3:
+    enabled: false
+    user: "XXXX"
+    secret: "YYYYY"
+    schedules:
+      full: "0 12 * * 0"
+      differential: "0 12 * * 1-6"
+    endpoint: "storage.med.one"
+    region: "US"
+
+
+# ==========================================
+# MONITORING (PMM)
+# ==========================================
+
+# -- Paste your PMM token here to enable monitoring. 
+# Leaving it blank or commenting it out will automatically disable PMM and skip secret generation.
+#pmm_server_token: ""
+
+#pmm:
+#  serverHost: "monitoring-service.med.one"

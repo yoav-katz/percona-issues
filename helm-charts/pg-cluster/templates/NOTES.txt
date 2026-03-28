@@ -1,0 +1,13 @@
+To get a PostgreSQL prompt inside your new cluster you can run:
+{{ $clusterName := include "pg-cluster.fullname" . }} 
+{{- if .Values.users }}
+  {{ $users := .Values.users }} {{ $firstUser := first $users }} {{ $userName := $firstUser.name }}
+  URI=$(kubectl -n {{ .Release.Namespace }} get secrets {{ $clusterName }}-pguser-{{ $userName }} -o jsonpath="{.data.uri}" | base64 --decode)
+{{- else }}
+  URI=$(kubectl -n {{ .Release.Namespace }} get secrets {{ $clusterName }}-pguser-{{ $clusterName }} -o jsonpath="{.data.pgbouncer-uri}" | base64 --decode)
+{{- end }}
+
+And then connect to a cluster with a temporary Pod:
+
+  $ kubectl run -i --rm --tty percona-client --image=docker.io/percona/percona-distribution-postgresql:17.7-2 --restart=Never \
+  -- psql $URI
