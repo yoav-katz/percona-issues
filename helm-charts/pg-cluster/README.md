@@ -2,6 +2,14 @@
 
 This Helm chart deploys and manages a highly available PostgreSQL cluster using the Percona Operator for PostgreSQL v2. It includes built-in support for high availability (Patroni), automated backups (pgBackRest) to local PVCs and remote S3 compatible storage, and monitoring (PMM).
 
+## Installation / Usage
+
+To deploy the cluster using this Helm chart, use the `helm install` command. For example, to install a release named `dbtstyoav-prod` into the `dbaas-postgres` namespace from a local chart directory named `pg-cluster/`, run:
+
+```bash
+helm install dbtstyoav-prod pg-cluster/ -n dbaas-postgres
+```
+
 ## Configuration
 
 The chart is configured via the `values.yaml` file. Below are the primary configuration sections:
